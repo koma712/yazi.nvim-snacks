@@ -136,7 +136,7 @@ function M.yazi(config, input_path, args)
         M.previous_state.last_hovered = path.filename
       end
     end,
-  })
+  }, win.win)
 
   M.active_contexts:push(yazi_context)
 
