@@ -22,8 +22,9 @@ YaziProcess.__index = YaziProcess
 ---@param config YaziConfig
 ---@param paths Path[]
 ---@param callbacks yazi.Callbacks
+---@param win integer
 ---@return YaziProcess, YaziActiveContext
-function YaziProcess:start(config, paths, callbacks)
+function YaziProcess:start(config, paths, callbacks, win)
   os.remove(config.chosen_file_path)
 
   -- The YAZI_ID of the yazi process, used to uniquely identify this specific
@@ -47,7 +48,12 @@ function YaziProcess:start(config, paths, callbacks)
     ya_process = self.ya_process,
     yazi_job_id = self.yazi_job_id,
     input_path = paths[1],
+    win = win,
   }
+
+  if os.getenv("TMUX") then
+    vim.cmd("call system('tmux set -p allow-passthrough on')")
+  end
 
   self.yazi_job_id = vim.fn.jobstart(yazi_cmd, {
     term = true,
@@ -56,6 +62,8 @@ function YaziProcess:start(config, paths, callbacks)
       -- neovim specific functionality
       NVIM_CWD = vim.uv.cwd(),
       YAZI_CONFIG_HOME = config.config_home,
+      -- Prevent yazi from trying to render images itself
+      TERM = "xterm-256color",
     },
     on_exit = function(_, code)
       self.ya_process:kill_and_wait(1000)
