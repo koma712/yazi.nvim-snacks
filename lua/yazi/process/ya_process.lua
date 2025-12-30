@@ -239,6 +239,12 @@ function YaProcess:process_events(events, forwarded_event_kinds, context)
           Log:debug("Skipping buffer highlighting (disabled in config)")
         end
 
+        if context.win then
+          require("yazi.integrations.snacks_image_preview").handle_hover(
+            event.url,
+            context.win
+          )
+        end
         nvim_event_handling.emit("YaziDDSHover", event)
       end)
     elseif event.type == "cd" and event.yazi_id == self.yazi_id then
