@@ -7,7 +7,6 @@ M.preview_buf = nil
 M.request_id = 0
 local timer = vim.uv.new_timer()
 
--- 로딩 텍스트 하이라이트 투명화
 local function hide_loading_text()
   pcall(vim.api.nvim_set_hl, 0, "SnacksImageLoading", { link = "NonText", default = true })
   pcall(vim.api.nvim_set_hl, 0, "SnacksImageSpinner", { link = "NonText", default = true })
@@ -43,7 +42,6 @@ function M.handle_hover(url, yazi_win_id)
   M.request_id = M.request_id + 1
   local rid = M.request_id
 
-  -- 150ms 디바운스
   timer:start(150, 0, vim.schedule_wrap(function()
     if rid ~= M.request_id or M.current_url ~= url then return end
     if not vim.api.nvim_win_is_valid(yazi_win_id) then
@@ -53,21 +51,19 @@ function M.handle_hover(url, yazi_win_id)
 
     hide_loading_text()
 
-    local yazi_buf = vim.api.nvim_win_get_buf(yazi_win_id)
-    
-    -- 세션별로 정리 로직 등록
-    if not vim.b[yazi_buf].yazi_snacks_attached then
-      vim.b[yazi_buf].yazi_snacks_attached = true
-      vim.api.nvim_create_autocmd({ "BufWipeout", "WinClosed", "VimLeavePre" }, {
-        buffer = yazi_buf,
-        callback = function() M.close_preview() end,
-        once = true,
-      })
-    end
-
     if not M.preview_buf or not vim.api.nvim_buf_is_valid(M.preview_buf) then
       M.preview_buf = vim.api.nvim_create_buf(false, true)
       pcall(vim.api.nvim_set_option_value, "bufhidden", "hide", { buf = M.preview_buf })
+      
+      local yazi_buf = vim.api.nvim_win_get_buf(yazi_win_id)
+      if not vim.b[yazi_buf].yazi_snacks_attached then
+        vim.b[yazi_buf].yazi_snacks_attached = true
+        vim.api.nvim_create_autocmd({ "BufWipeout", "WinClosed", "VimLeavePre" }, {
+          buffer = yazi_buf,
+          callback = function() M.close_preview() end,
+          once = true,
+        })
+      end
     end
     
     local buf = M.preview_buf
@@ -105,6 +101,7 @@ function M.handle_hover(url, yazi_win_id)
     else
       M.preview_win = vim.api.nvim_open_win(buf, false, win_opts)
       pcall(vim.api.nvim_set_option_value, "winblend", 0, { win = M.preview_win })
+      pcall(vim.api.nvim_set_option_value, "wrap", false, { win = M.preview_win })
     end
 
     if M.current_placement then
@@ -113,20 +110,38 @@ function M.handle_hover(url, yazi_win_id)
       pcall(function() p:close() end)
     end
 
-    -- 이미지 렌더링
     vim.defer_fn(function()
       if rid ~= M.request_id or M.current_url ~= url then return end
       
       local ok, placement = pcall(function()
         return Snacks.image.placement.new(buf, url, {
           pos = { 1, 0 },
-          size = { width = preview_width, height = preview_height },
+          width = preview_width + 1,
+          height = preview_height + 1,
+          max_width = preview_width + 1,
+          max_height = preview_height + 1,
           inline = true,
         })
       end)
 
       if ok and rid == M.request_id then
         M.current_placement = placement
+        
+        -- [Hack] 고해상도 이미지의 DPI를 표준(96)으로 강제 고정하여 크기 축소 방지
+        -- dpi 필드가 nil이면 크래시가 나므로 {width=96, height=96}으로 설정
+        if placement.img then
+          local original_on_ready = placement.img.on_ready
+          placement.img.on_ready = function(self)
+            if self.info then 
+                self.info.dpi = { width = 96, height = 96 }
+            end
+            if original_on_ready then original_on_ready(self) end
+          end
+          if placement.img.info then 
+              placement.img.info.dpi = { width = 96, height = 96 }
+          end
+        end
+        
       elseif ok then
         pcall(function() placement:close() end)
       end
